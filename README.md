@@ -4,7 +4,7 @@
 
 ## 安装
 
-**[在 Greasy Fork 安装](https://greasyfork.org/zh-CN/scripts/596810)**（需先装好 Tampermonkey 等用户脚本管理器）
+**[点此安装脚本](https://raw.githubusercontent.com/Lormited/XMU-TronClass-Helper/main/XMU-TronClass-Helper.user.js)**
 
 ## 功能
 

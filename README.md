@@ -4,7 +4,7 @@
 
 ## 安装
 
-**[点此安装脚本](https://raw.githubusercontent.com/Lormited/XMU-TronClass-Helper/main/XMU-TronClass-Helper.user.js)**
+**[点此安装脚本](https://raw.githubusercontent.com/Lormited/XMU-TronClass-Helper/main/XMU-TronClass-Helper.user.js)**（需先装好 Tampermonkey 等用户脚本管理器）
 
 ## 功能
 

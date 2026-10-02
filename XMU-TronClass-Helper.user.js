@@ -32,13 +32,16 @@
   const POLL = 1300;          // 轮询间隔(ms)：等 SPA 渲染 / 抵抗重渲染
 
   // ─── 基础 ──────────────────────────────────────────────────
-  // 默认全开，以下三项默认关：
-  //   顶栏精简   —— 会隐藏顶栏上的入口，交给用户按需选
-  //   签到列表   —— 会把首页「常用入口」整块替换掉，改动较大
+  // 默认只开「资料下载」和「界面精简」，其余都要用户自己按需打开：
+  //   签到列表   —— 会把首页「常用入口」整块替换掉
+  //   顶栏精简   —— 会隐藏顶栏上的入口
+  //   校徽回主页 —— 改掉校徽原本的去向
+  //   页面自适应 —— 会缩放整个首页并禁止整页滚动
+  //   课程栏优化 —— 会接管课程栏的点击与滚轮
   //   显示签到码 —— 每个数字签到都要额外请求一次详情接口
   const DEFAULTS = {
     feat_download: true, feat_signin: false, feat_chrome: true,
-    feat_topbar: false, feat_homelogo: true, feat_fit: true, feat_coursebar: true,
+    feat_topbar: false, feat_homelogo: false, feat_fit: false, feat_coursebar: false,
     // 界面精简的四个子项
     chrome_sidebar: true, chrome_footer: true, chrome_ai: true, chrome_scrollbar: true,
     signin_code: false,

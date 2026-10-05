@@ -2,14 +2,14 @@
 // @name         XMU-TronClass-Helper
 // @name:zh-CN   XMU 厦大畅课助手
 // @namespace    https://github.com/Lormited/XMU-TronClass-Helper
-// @version      0.5.7
+// @version      0.5.8
 // @author       Lormited
 // @license      MIT
 // @homepageURL  https://github.com/Lormited/XMU-TronClass-Helper
 // @supportURL   https://github.com/Lormited/XMU-TronClass-Helper
 // @updateURL    https://raw.githubusercontent.com/Lormited/XMU-TronClass-Helper/main/XMU-TronClass-Helper.user.js
 // @downloadURL  https://raw.githubusercontent.com/Lormited/XMU-TronClass-Helper/main/XMU-TronClass-Helper.user.js
-// @description  XMU 厦大畅课助手：资料下载 / 签到列表 / 界面精简 / 顶栏精简 / 页面自适应 / 课程栏优化 / 校徽回主页
+// @description  XMU 厦大畅课助手：资料下载 / 签到列表 / 界面精简 / 顶栏精简 / 校徽回主页 / 页面自适应 / 课程栏优化 / 待办排序
 // @match        https://lnt.xmu.edu.cn/*
 // @grant        GM_download
 // @grant        GM_getValue
@@ -42,6 +42,7 @@
   const DEFAULTS = {
     feat_download: true, feat_signin: false, feat_chrome: true,
     feat_topbar: false, feat_homelogo: false, feat_fit: false, feat_coursebar: false,
+    feat_todo: true,
     // 界面精简的四个子项
     chrome_sidebar: true, chrome_footer: true, chrome_ai: true, chrome_scrollbar: true,
     signin_code: false,
@@ -72,7 +73,7 @@
 
   const REPO = 'https://github.com/Lormited/XMU-TronClass-Helper';
   // 版本号取自脚本头部的 @version，省得面板里再抄一遍、两边对不上
-  const VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '0.5.7';
+  const VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '0.5.8';
 
   function style(id, css) {
     if (document.getElementById(id)) return;
@@ -302,7 +303,7 @@
   }
 
   modules.signin = {
-    id: 'signin', name: '签到列表', desc: '把首页「常用入口」替换为「正在签到」列表',
+    id: 'signin', name: '签到列表', desc: '首页「常用入口」替换为「正在签到」',
 
     init() {
       if (!isHome()) return;
@@ -655,7 +656,7 @@
   const HOME_URL = 'https://lnt.xmu.edu.cn/user/index#/';
 
   modules.homelogo = {
-    id: 'homelogo', name: '校徽回主页', desc: '点左上角校徽回主页，不再跳数字化教学平台',
+    id: 'homelogo', name: '校徽回主页', desc: '点击左上角校徽改为回到首页',
 
     init() {
       this.poller = loop();
@@ -758,7 +759,7 @@
 
   // ─── 7. 课程栏优化 ────────────────────────────────────────────
   modules.coursebar = {
-    id: 'coursebar', name: '课程栏优化', desc: '课程横向列表整页翻动，带平滑动画，支持鼠标滚轮',
+    id: 'coursebar', name: '课程栏优化', desc: '课程栏支持滚轮横向滑动，并优化翻页效果',
 
     init() {
       if (!isHome()) return;
@@ -805,6 +806,43 @@
     syncArrows(c) {
       $('.nav-arrow.left')?.classList.toggle('disabled', c.scrollLeft <= 2);
       $('.nav-arrow.right')?.classList.toggle('disabled', c.scrollLeft >= c.scrollWidth - c.clientWidth - 2);
+    },
+  };
+
+  // ─── 8. 待办排序 ──────────────────────────────────────────
+  // 首页「待办」里的作业按截止时间升序排（最近到期的排最前）。
+  // 站点只按发布顺序排，不按截止时间。
+  const DUE_RE = /(\d{4})\.(\d{1,2})\.(\d{1,2})\s+(\d{1,2}):(\d{2})/;
+
+  function todoDue(item) {
+    const m = ($('.todo-datetime', item)?.textContent || '').match(DUE_RE);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : Infinity;
+  }
+
+  modules.todo = {
+    id: 'todo', name: '待办排序', desc: '首页待办按截止时间升序排列',
+
+    init() {
+      if (!isHome()) return;
+      this.poller = loop();
+      this.poller.start(() => this.sort());
+    },
+
+    destroy() { this.poller.stop(); },
+
+    sort() {
+      const box = $('.todo-list-container');
+      if (!box) return;
+      const items = $$('.todo-item', box);
+      if (items.length < 2) return;
+
+      // 已经按这个顺序排过就跳过：每次轮询都搬 DOM 会把悬停、选中状态搅乱
+      const key = (i) => ($('.todo-title', i)?.textContent || '') + '|' + ($('.todo-datetime', i)?.textContent || '');
+      const sig = items.map(key).join('##');
+      if (sig === this.sig) return;
+      this.sig = sig;
+
+      items.slice().sort((a, b) => todoDue(a) - todoDue(b)).forEach((i) => box.appendChild(i));
     },
   };
 

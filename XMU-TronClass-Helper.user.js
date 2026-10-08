@@ -2,7 +2,7 @@
 // @name         XMU-TronClass-Helper
 // @name:zh-CN   XMU 厦大畅课助手
 // @namespace    https://github.com/Lormited/XMU-TronClass-Helper
-// @version      0.5.8
+// @version      0.5.9
 // @author       Lormited
 // @license      MIT
 // @homepageURL  https://github.com/Lormited/XMU-TronClass-Helper
@@ -50,13 +50,13 @@
 
   const store = {
     get(k) {
-      try { const v = GM_getValue('xmu_' + k, undefined); if (v !== undefined) return v; } catch (e) {}
-      try { const v = localStorage.getItem('xmu_' + k); if (v !== null) return JSON.parse(v); } catch (e) {}
+      try { const v = GM_getValue('xmu_' + k, undefined); if (v !== undefined) return v; } catch (e) { }
+      try { const v = localStorage.getItem('xmu_' + k); if (v !== null) return JSON.parse(v); } catch (e) { }
       return DEFAULTS[k];
     },
     set(k, v) {
-      try { return GM_setValue('xmu_' + k, v); } catch (e) {}
-      try { localStorage.setItem('xmu_' + k, JSON.stringify(v)); } catch (e) {}
+      try { return GM_setValue('xmu_' + k, v); } catch (e) { }
+      try { localStorage.setItem('xmu_' + k, JSON.stringify(v)); } catch (e) { }
     },
   };
 
@@ -73,7 +73,7 @@
 
   const REPO = 'https://github.com/Lormited/XMU-TronClass-Helper';
   // 版本号取自脚本头部的 @version，省得面板里再抄一遍、两边对不上
-  const VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '0.5.8';
+  const VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version);
 
   function style(id, css) {
     if (document.getElementById(id)) return;
@@ -225,7 +225,7 @@
           seen.add(u.id);
           this.files.push({ id: u.id, name: u.name || `document-${u.id}`, size: u.size, checked: false });
         }));
-      } catch (e) {}
+      } catch (e) { }
 
       if (!this.files.length) {
         $('.xmu-dl-list', this.panel).innerHTML = '<div class="xmu-dl-empty">没有可下载的资料</div>';
@@ -270,7 +270,7 @@
       for (const [i, f] of targets.entries()) {
         btn.textContent = `下载中 ${i + 1}/${targets.length}`;
         let url = null;
-        try { url = (await api(`/api/uploads/${f.id}/download-url-for-ai`)).url || null; } catch (e) {}
+        try { url = (await api(`/api/uploads/${f.id}/download-url-for-ai`)).url || null; } catch (e) { }
         if (url && await saveFile(url, cleanName(f.name))) ok++; else fail++;
         await sleep(400);                       // 别把请求打太密
       }
@@ -287,6 +287,24 @@
     number: '数字点名', qr: '二维码点名', manual: '手动点名',
     radar: '雷达点名', selfRegistration: '自主签到', roomis: 'ROOMIS',
   };
+
+  const LIST_URL = 'https://c-mobile.xmu.edu.cn/ongoing-rollcall-list';
+
+  // 雷达接口的字段名和页面上看到的不一样：课程名是 course_title，
+  // 点名方式也不能直接读 type（数字点名那里 type 是 'another'），要看 is_number / is_radar / source。
+  function rollcallType(r) {
+    if (r.is_number) return '数字点名';
+    if (r.is_radar) return '雷达点名';
+    return ROLLCALL_TYPE[String(r.source || r.type || '').replace(/_rollcall$/, '')] || '点名';
+  }
+
+  // 点条目直接进答题页。数字点名的路径是 course/{course_id}/number-rollcall/{rollcall_id}/answer，
+  // 其它类型暂时回落到通用列表——路径规则没验证过，不猜。
+  function rollcallUrl(r) {
+    if (r.is_number && r.course_id && r.rollcall_id)
+      return `https://c-mobile.xmu.edu.cn/course/${r.course_id}/number-rollcall/${r.rollcall_id}/answer`;
+    return LIST_URL;
+  }
 
   // 签到码在 /api/rollcall/{id}/student_rollcalls 的 number_code 里，id 直接取自签到条目
   const RC_CACHE = {};
@@ -374,8 +392,8 @@
 
       body.innerHTML = '';
       data.forEach((r) => {
-        const course = r.course_name || r.courseName || r.course?.name || '课程';
-        const type = ROLLCALL_TYPE[String(r.rollcall_type || r.type || '').replace(/_rollcall$/, '')] || '点名';
+        const course = r.course_title || r.course_name || r.course?.name || '课程';
+        const type = rollcallType(r);
         // 已签到要看 status。student_status 即使已签到也仍是 on_call，不能用
         const signed = /fine|late|present|signed/.test(String(r.status || r.rollcall_status || ''));
 
@@ -389,7 +407,7 @@
         go.className = 'xmu-sc-go' + (signed ? ' done' : '');
         go.innerHTML = `<i class="font ${signed ? 'font-rollcall-finish' : 'font-goto'}"></i>`;
         if (signed) item.style.cursor = 'default';
-        else item.onclick = () => window.open('https://c-mobile.xmu.edu.cn/ongoing-rollcall-list', '_blank');
+        else item.onclick = () => window.open(rollcallUrl(r), '_blank');
 
         body.appendChild(item);
         this.fillCode(item, r);

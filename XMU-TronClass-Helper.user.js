@@ -2,11 +2,10 @@
 // @name         XMU-TronClass-Helper
 // @name:zh-CN   XMU 厦大畅课助手
 // @namespace    https://github.com/Lormited/XMU-TronClass-Helper
-// @version      0.6.0
+// @version      0.6.1
 // @author       Lormited
 // @license      MIT
 // @homepageURL  https://github.com/Lormited/XMU-TronClass-Helper
-// @supportURL   https://github.com/Lormited/XMU-TronClass-Helper
 // @updateURL    https://raw.githubusercontent.com/Lormited/XMU-TronClass-Helper/main/XMU-TronClass-Helper.user.js
 // @downloadURL  https://raw.githubusercontent.com/Lormited/XMU-TronClass-Helper/main/XMU-TronClass-Helper.user.js
 // @description  XMU 厦大畅课助手：资料下载 / 首页优化（校徽首页跳转 · 页面自适应 · 课程栏滑动 · 待办排序 · 签到列表替换）/ 界面精简 / 顶栏精简
@@ -21,12 +20,12 @@
 (() => {
   'use strict';
 
-  // ─── 可调参数（想自己试效果，改这里就行） ──────────────────────────────────
   const COURSE_STEP = 0.97;   // 课程栏每次翻页的比例，1 = 正好一屏
   const COURSE_DUR = 280;     // 课程栏翻页动画时长(ms)
   const WHEEL_STEP = 1.6;     // 课程栏滚轮灵敏度
   const FIT_SCALE = 0.85;     // 页面自适应：整页缩放到窗口的 85%
   const POLL = 1300;          // 轮询间隔(ms)
+  const FETCH_CODE = false;
 
   // ─── 基础 ──────────────────────────────────────────────────
   const DEFAULTS = {
@@ -246,7 +245,7 @@
     },
   };
 
-  // ─── 首页优化（把首页那几个功能收成一组） ──────────────────
+  // ─── 首页优化 ──────────────────
   const HOME_FEATS = [
     ['homelogo', '校徽首页跳转'],
     ['fit', '页面自适应'],
@@ -281,7 +280,10 @@
     radar: '雷达点名', selfRegistration: '自主签到', roomis: 'ROOMIS',
   };
   const LIST_URL = 'https://c-mobile.xmu.edu.cn/ongoing-rollcall-list';
-  const RC_CACHE = {};                          // 签到码缓存：rollcall_id -> 码 / null
+  const RC_CACHE = store.get('rc_codes') || {};
+
+  // 已签到看 status；student_status 即使已签也仍是 on_call，不能用
+  const isSigned = (r) => /fine|late|present|signed/.test(String(r.status || ''));
 
   function rollcallType(r) {
     if (r.is_number) return '数字点名';
@@ -295,12 +297,14 @@
     return LIST_URL;
   }
 
+  // 每个签到永远只请求一次：查过就落盘（含 null），之后无论刷新还是重开页面都不再请求
   async function signinCodeOf(r) {
     const id = r.rollcall_id;
-    if (!id) return null;
-    if (id in RC_CACHE) return RC_CACHE[id];
+    if (!id || id in RC_CACHE) return RC_CACHE[id];
+    RC_CACHE[id] = null;                        // 先占位，同一轮渲染的重复调用不会再发请求
     const j = await api(`/api/rollcall/${id}/student_rollcalls`).catch(() => null);
     RC_CACHE[id] = j && j.is_number ? j.number_code || null : null;
+    store.set('rc_codes', RC_CACHE);
     return RC_CACHE[id];
   }
 
@@ -325,17 +329,27 @@
         .xmu-sc-go{flex-shrink:0;width:24px;height:36px;line-height:36px;text-align:center;font-size:24px;color:var(--primary-brand-color);}
         .xmu-sc-go i{position:relative;top:3px;}
         .xmu-sc-go.done{color:#1a9c57;}
+        .xmu-sc-refresh{flex-shrink:0;display:flex;color:#8a9099;cursor:pointer;transition:color .18s ease;}
+        .xmu-sc-refresh svg{width:15px;height:15px;}
+        .xmu-sc-refresh:hover{color:var(--primary-brand-color);}
+        .xmu-sc-refresh.loading{color:var(--primary-brand-color);animation:xmu-sc-spin .8s linear infinite;}
+        @keyframes xmu-sc-spin{to{transform:rotate(360deg);}}
       `);
-      poll(this, this.mount, this.load);
+      this.load();                     // 打开页面取一次，之后靠卡片右上角的刷新按钮
+      let tries = 0;                   // 卡片是 SPA 后渲染的：短轮询等它出现（只查 DOM，不发请求）
+      this.retry = setInterval(() => {
+        this.mount();
+        if (this.card || ++tries > 10) clearInterval(this.retry);
+      }, 400);
     },
 
     destroy() {
-      this.poller.stop();
+      clearInterval(this.retry);
       if (this.card && typeof this.orig === 'string') {   // 留底可能是 undefined，不能直接写回
         this.card.innerHTML = this.orig;
         delete this.card.dataset.xmuSignin;
       }
-      this.card = this.orig = null;
+      this.card = this.orig = this.btn = null;
     },
 
     // 把首页卡片改造成「正在签到」（只接管一次）
@@ -348,17 +362,29 @@
       if (!card.dataset.xmuSignin) this.orig = card.innerHTML;   // 只在没被改造过时留底
       this.card = card;
       card.dataset.xmuSignin = '1';
-      $('.frequent-entry-header .title', card).textContent = '正在签到';
-      $('.frequent-entry-header .options', card)?.remove();
+      const head = $('.frequent-entry-header', card);
+      $('.title', head).textContent = '正在签到';
+      const opts = $('.options', head) || Object.assign(head.appendChild(document.createElement('div')), { className: 'options' });
+      opts.innerHTML = '<i class="xmu-sc-refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 4 21 10 15 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L21 10"/></svg></i>';
+      this.btn = $('.xmu-sc-refresh', opts);
+      this.btn.onclick = () => this.refresh();
       $('.frequent-entry-list-wrapper', card).innerHTML = '<div class="xmu-sc-body"></div>';
       this.render();
+    },
+
+    // 手动刷新：只重取雷达列表（大众接口），刷新签到状态与条目；不会重查签到码
+    async refresh() {
+      this.mount();
+      this.btn?.classList.add('loading');
+      await this.load();
+      this.btn?.classList.remove('loading');
     },
 
     async load() {
       const next = await api('/api/radar/rollcalls?api_version=1.1.0').then((j) => j.rollcalls || []).catch(() => null);
       if (!next) return;
       const sig = JSON.stringify(next);
-      if (sig === this.sig) return;             // 数据没变就不重绘
+      if (sig === this.sig) return;
       this.sig = sig;
       this.data = next;
       this.render();
@@ -373,8 +399,7 @@
       body.innerHTML = '';
       data.forEach((r) => {
         const course = r.course_title || '课程';
-        // 已签到看 status；student_status 即使已签也仍是 on_call，不能用
-        const signed = /fine|late|present|signed/.test(String(r.status || ''));
+        const signed = isSigned(r);
 
         const item = document.createElement('div');
         item.className = 'xmu-sc-item';
@@ -389,13 +414,12 @@
         else item.onclick = () => window.open(rollcallUrl(r), '_blank');
 
         body.appendChild(item);
-        this.fillCode(item, r);
+        this.fillCode(item, r, signed);
       });
     },
 
-    // 命中缓存就同步填，避免列表重绘时闪一下
-    fillCode(item, r) {
-      if (!r.rollcall_id) return;
+    fillCode(item, r, signed) {
+      if (!FETCH_CODE || signed || !r.is_number || !r.rollcall_id) return;
       const box = $('.xmu-sc-code', item);
       if (!box) return;
       const paint = (c) => { box.textContent = c; box.classList.add('on'); };
